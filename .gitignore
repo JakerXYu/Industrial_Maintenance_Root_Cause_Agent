@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual env
+.venv/
+venv/
+
+# Local environment / secrets
+.env
+
+# Local provider smoke checks
+/test_deepseek.py
+
+# Test artifacts
+.pytest_cache/
+
+# Reproducible generated data and runtime artifacts
+data/raw/*.csv
+data/industrial.db
+traces/*.json
