@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from src.agent.policy import approve_action, reject_action
@@ -48,6 +49,10 @@ def create_app(
     pending: Dict[str, ProposedAction] = {}
 
     app = FastAPI(title="Industrial Maintenance Agent API", version="0.1.0")
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse(url="/docs")
 
     @app.get("/health")
     def health() -> dict:

@@ -6,7 +6,7 @@
 > 真实写、向量 DB），并给出准确限定；其余缺失的核心目标一律记为 `MISSING`。
 > 处置：`保持`=维持现状；`加固`=补齐约束/测试/真实语义；`新增`=后续实现；`延后`=条件满足才做。
 
-事实基线：确定性 baseline（未接 LLM）；固定 plan；只读工具；SQLite；66 测试；30 场景；
+事实基线：确定性 baseline（未接 LLM）；固定 plan；只读工具；SQLite；71 测试；30 场景；
 评估为 **7 项指标 + `total_scenarios` 计数**（不是 8 项指标）。
 来源：`../README.md`、`docs/HANDBOOK.md`、`docs/NEXT_PHASES.md`（P0/P1/P2 路线图）、`docs/EVALUATION_REPORT.md`。
 
@@ -96,9 +96,9 @@
 | Logging / tracing（日志 / 追踪） | PARTIAL | trace 有（`src/agent/tracing.py` 落 `TraceRecord`，可观测性/诊断记录，非审计）；结构化日志无 | 加固（P1-3） |
 | Config（配置） | IMPLEMENTED | `src/config.py` `Settings` + 环境变量 + `SecretStr`；`.env.example` | 保持 |
 | Error handling（错误处理） | PARTIAL | `ToolResult` 错误码 + `runner` 降级 ERROR；无重试/兜底 | 加固（P0-3） |
-| Reproducible test cases（可复现用例） | IMPLEMENTED | 固定 seed 生成 + 66 测试 + 30 场景 | 保持 |
-| Unit / integration / eval tests（单测 / 集成 / 评估） | IMPLEMENTED | `tests/` 66 用例跨层 + `src/evaluation/` 离线评估 | 保持 |
-| Docker | PARTIAL | `Dockerfile` + `docker-compose.yml` 存在；运行时未验证（README 明确「本机无 daemon」） | 加固（P1-3 真实验证） |
+| Reproducible test cases（可复现用例） | IMPLEMENTED | 固定 seed 生成 + 71 测试 + 30 场景 | 保持 |
+| Unit / integration / eval tests（单测 / 集成 / 评估） | IMPLEMENTED | `tests/` 71 用例跨层 + `src/evaluation/` 离线评估 | 保持 |
+| Docker | IMPLEMENTED | 本地 Compose 已真实 build/recreate；API 8001→8000 healthy，UI 8502 health 200 | 生产部署与 CI gate 仍属后续 |
 | API | IMPLEMENTED | `src/api/main.py`（FastAPI） | 保持 |
 | CLI or UI（命令行或界面） | IMPLEMENTED | `ui/streamlit_app.py`（Streamlit）；无 CLI | 保持 |
 

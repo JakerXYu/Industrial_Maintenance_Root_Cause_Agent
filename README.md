@@ -65,7 +65,7 @@
 | Agent | typed state + 线性流程 + 审批门 + trace | 部分完成（无显式 graph / checkpoint / recovery） |
 | 评估 evaluation | 30 个合成场景 + 7 项指标（另含场景总数） | 部分完成（回归自检，非泛化证明） |
 | API / UI | FastAPI + Streamlit | 完成 |
-| Docker | Dockerfile + docker-compose.yml | 文件存在，运行时未验证（本机无 daemon） |
+| Docker | Dockerfile + docker-compose.yml | 本机构建、运行与健康检查已验证（非生产部署） |
 | LLM / CI / 结构化应用日志 / 认证 | — | 未实现 |
 
 ## 代表性演示路径
@@ -75,7 +75,7 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
 .\.venv\Scripts\python scripts\generate_synthetic_data.py   # 可复现数据 + ground truth
 .\.venv\Scripts\python scripts\load_database.py             # 入库
-.\.venv\Scripts\python -m pytest                            # 66 passed
+.\.venv\Scripts\python -m pytest                            # 71 passed
 .\.venv\Scripts\python scripts\run_evaluation.py            # 30 scenarios → 报告
 .\.venv\Scripts\python -m uvicorn src.api.main:app --reload # http://127.0.0.1:8000/docs
 ```
@@ -94,7 +94,7 @@ GET  /traces/{request_id}
 
 ## 实测结果与口径警示
 
-30 个合成场景、66 个测试全绿。指标（`docs/EVALUATION_REPORT.md` 为原始报告）：
+30 个合成场景、71 个测试全绿。指标（`docs/EVALUATION_REPORT.md` 为原始报告）：
 
 | 指标 | 值 | 口径警示 |
 |---|---|---|
@@ -139,7 +139,7 @@ python -m venv .venv
 # UI（另一个终端）
 .\.venv\Scripts\python -m streamlit run ui/streamlit_app.py
 
-# Docker（文件存在；运行时验证 pending，本机无 daemon）
+# Docker（已验证：API http://localhost:8001/；UI http://localhost:8502/）
 docker compose up --build
 ```
 
@@ -163,6 +163,10 @@ docker compose up --build
 - 不宣称生产可用、自治、或 evidence-grounded。
 
 ## 文档索引
+
+面向最终用户：
+
+- [`docs/USER_GUIDE_CN.md`](docs/USER_GUIDE_CN.md) — 中文用户指南（第一次使用者的操作手册）
 
 权威文档（面试前必读）：
 

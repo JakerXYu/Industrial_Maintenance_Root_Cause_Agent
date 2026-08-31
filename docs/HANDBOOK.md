@@ -5,10 +5,30 @@
 > 能力矩阵、评估方法学、安全模型与面试讲解分别见 `CAPABILITY_MATRIX.md`、
 > `EVALUATION_METHODOLOGY.md`、`SAFETY_AND_THREAT_MODEL.md`、`INTERVIEW_GUIDE.md`。
 
+## 0. 推荐学习路线
+
+不要从文件树逐个背代码。按一次请求的真实数据流学习：
+
+| 阶段 | 先做什么 | 重点源码 / 文档 | 学完应能回答 |
+|---|---|---|---|
+| 1. 跑起来 | 按 `USER_GUIDE_CN.md` 生成数据并打开 UI | `scripts/`、`ui/streamlit_app.py` | 数据从哪里来，页面四个入口分别做什么？ |
+| 2. 看数据边界 | 阅读表结构与 Pydantic 契约 | `src/db/schema.py`、`src/contracts/` | 为什么模块间不用裸 dict，empty 与 error 如何区分？ |
+| 3. 看只读能力 | 从 Repository 跟到 tools / registry | `src/db/repository.py`、`src/tools/`、`src/agent/tools.py` | SQL、工具 schema、参数校验和只读边界分别在哪里？ |
+| 4. 看确定性计算 | 学 meter summary、异常和文档检索 | `src/analytics/`、`src/rag/` | 哪些结论由代码计算，为什么当前只能叫 retrieval scaffold？ |
+| 5. 跟一次 Agent 请求 | 顺序跟 interpret → plan → execute → synthesize | `src/agent/` | State 如何变化，工具如何转证据，假设与提案如何生成？ |
+| 6. 看安全与可观测 | 检查 request id、approval、trace | `request_id.py`、`policy.py`、`tracing.py` | trace、checkpoint、audit、memory 为什么不是一回事？ |
+| 7. 看评估 | 运行 30 场景并对照方法论 | `src/evaluation/`、`EVALUATION_METHODOLOGY.md` | 为什么多个 1.0 不是泛化证明，0.3698 暴露了什么？ |
+| 8. 看交付边界 | 体验 API / Docker，再读 roadmap | `src/api/main.py`、Docker、`CAPABILITY_MATRIX.md`、`NEXT_PHASES.md` | 当前完成了什么，真实 LLM / 写入 / 生产化还缺什么？ |
+
+建议第一次源码调试从 `AgentRunner.run("A001 stopped this week")` 开始，在
+`planner.interpret`、`executor.execute`、`synthesizer.synthesize` 和 `TraceStore.save`
+设置断点；这条路径覆盖本项目最核心的 contracts、tools、analytics、retrieval、state、approval 与 trace。
+
 ## 1. 系统概览
 
-这是一个「小规模但架构完整」的工业维护 / 根因分析 Agent。它通过结构化工具查询设备、
-工单、计量趋势和维修文档，基于证据形成根因假设；所有写类动作都必须经过人工审批。
+这是一个「小规模、端到端可运行的确定性 baseline」工业维护 / 根因分析 Agent Harness。
+它通过结构化工具查询设备、工单、计量趋势和维修文档，形成根因候选与关联引用；写类意图
+只生成需要人工复核的提案，当前没有真实外部执行。
 
 核心目标不是「做一个维修聊天机器人」，而是演示一个 **可验证、可观测、可审批** 的
 工业 Agent Harness：LLM 是未来后置的概率推理组件，外围是确定性软件系统。
@@ -17,21 +37,21 @@
 
 - **LLM 不是 system of record**：真实状态由工具查，数值结论由代码算；LLM（未来）只做推理与表达。
 - **empty ≠ error**：空结果（`empty=True`）与工具失败（`ok=False`）是两回事。
-- **read 自由，write 审批**：只读工具自动执行；任何写类动作先产出 `ProposedAction`，显式 `APPROVED` 后才可执行。
+- **read 自由，write 提案**：只读工具自动执行；写类意图只产出 `ProposedAction`。`APPROVED` 是未来执行器的必要门槛，但 v0 没有真实写执行器或外部副作用。
 - **typed everywhere**：模块边界用 Pydantic 契约，不传裸 dict。
 - **证据带 source-id，但 grounding 弱**：每条假设带 `supporting_evidence_ids` / `contradicting_evidence_ids`（事实、检索指导、推断分开），但当前检索文档不参与根因打分（见第 11.1 节 RAG 限制）。
 
 ## 2. 现状架构 vs 目标架构
 
 > 本文档自始至终区分「已实现的 current」与「规划的 target」。当前代码里**没有** CLI、
-> **没有** LLM、**没有** LangGraph；只有 API、Streamlit UI 与确定性状态机。
+> **没有** LLM、**没有** LangGraph；只有 API、Streamlit UI 与 typed state + linear orchestration。
 
 ### 2.1 Current（已实现，确定性 baseline）
 
 ```text
 ┌──────────────────────────────────────────────┐
 │ Streamlit UI / FastAPI                        │
-│ question + approve/reject + trace inspect     │
+│ asset/task + review proposal + trace inspect  │
 └──────────────────────┬───────────────────────┘
                        ▼
 ┌──────────────────────────────────────────────┐
@@ -42,7 +62,7 @@
          │                          │
          ▼                          ▼
 ┌──────────────────┐      ┌───────────────────┐
-│ Typed Read Tools  │      │ RAG Retriever      │
+│ Typed Read Tools  │      │ Retrieval scaffold │
 │ asset / WO / meter│      │ chunking + keyword │
 └────────┬──────────┘      └────────┬──────────┘
          ▼                          ▼
@@ -58,32 +78,18 @@
 ### 2.2 Target（未实现，设计见 `NEXT_PHASES.md`）
 
 ```text
-┌──────────────────────────────────────────────┐
-│ Streamlit UI / FastAPI                        │
-└──────────────────────┬───────────────────────┘
-                       ▼
-┌──────────────────────────────────────────────┐
-│ AgentRunner                                   │
-│ LLM interpret/plan（仅选已注册 read 工具）     │
-│ → execute（同一套 tools / analytics / RAG）   │
-│ → LLM synthesize（structured output）         │
-│ → policy(approval) → trace                    │
-└────────┬──────────────────────────┬──────────┘
-         │                          │
-         ▼                          ▼
-┌──────────────────┐      ┌───────────────────┐
-│ Typed Read Tools  │      │ RAG Retriever      │
-│ （不变）           │      │ （不变）           │
-└────────┬──────────┘      └────────┬──────────┘
-         ▼
-┌──────────────────────────────────────────────┐
-│ 审批门 → 真实 CMMS 写（前置 auth/审计/幂等/   │
-│ 限流/补偿 等 blocker，见 NEXT_PHASES.md）      │
-└──────────────────────────────────────────────┘
+UI / API
+  → bounded runtime（显式合法迁移、deadline、retry、step budget）
+  → LLM policy（typed plan；只能提出已注册 tool calls）
+  → schema-enforced tool gateway（校验、超时、调用账本）
+  → BM25 retrieval baseline + structured evidence
+  → structured claims + citation verifier / abstention
+  → 独立 runtime store（checkpoint、durable action proposal、audit events）
 ```
 
-关键点：**工具、分析、RAG、审批、trace 五层 Harness 在 target 中保持不变**，只有
-planner / synthesizer 被替换为 LLM。
+关键点：保留 typed read-only domain tools 和确定性数值分析；LLM 只是可替换 policy，不能
+绕过 runtime、tool、evidence 或 approval 契约。Target 仍不默认接真实 CMMS 写入；真实写需要
+认证、授权、幂等、持久审计、执行回执与补偿全部满足后再评估。
 
 ## 3. 目录结构
 
@@ -100,14 +106,14 @@ planner / synthesizer 被替换为 LLM。
 │  ├─ tools/                       # 只读工具（typed）
 │  ├─ analytics/                   # 趋势 / 异常 / summary
 │  ├─ rag/                         # 分块 / 关键词检索
-│  ├─ agent/                       # 状态机 / 审批 / trace
+│  ├─ agent/                       # typed state / 线性编排 / 审批 / trace
 │  ├─ evaluation/                  # 离线评估
 │  └─ api/                         # FastAPI
 ├─ ui/streamlit_app.py             # Streamlit
 ├─ data/raw/                       # 生成的 CSV
 ├─ data/docs/                      # 虚构维修文档（5 篇）
 ├─ data/industrial.db              # SQLite
-├─ tests/                          # 66 个用例
+├─ tests/                          # 71 个用例
 ├─ Dockerfile
 └─ docker-compose.yml
 ```
@@ -149,7 +155,7 @@ Agent 的交互入口是 API 与 Streamlit UI。
 | meter.py | SignalName, MeterReading, MeterSummaryRequest, SignalSummary, MeterSummary | 计量 |
 | evidence.py | EvidenceSourceType, EvidenceItem | 证据 |
 | rag.py | DocumentChunk, RetrievalResult | RAG |
-| agent.py | Confidence, Hypothesis, AgentStatus, ToolCallTrace, TraceRecord, AgentState | 状态机 / 假设 / trace |
+| agent.py | Confidence, Hypothesis, AgentStatus, ToolCallTrace, TraceRecord, AgentState | typed state / 假设 / trace |
 | evaluation.py | EvalScenario, EvalResult, MetricsSnapshot | 评估 |
 
 ### 关键契约细节
@@ -336,6 +342,11 @@ interpret（正则解析资产 A\d{3}）
 Base：`http://127.0.0.1:8000`，交互式文档 `/docs`。当前 API **无认证、无结构化应用日志**；
 `pending` 审批表是 `create_app()` 内的进程内 `dict`，重启即丢、多 worker 不共享。
 
+### GET /
+
+- 不进入 OpenAPI schema。
+- 返回 HTTP 307，重定向到 `/docs`。本地 Compose 入口为 `http://localhost:8001/`。
+
 ### GET /health
 
 返回 `{"status": "ok"}`。
@@ -463,24 +474,25 @@ Base：`http://127.0.0.1:8000`，交互式文档 `/docs`。当前 API **无认�
 
 ## 15. UI（`ui/streamlit_app.py`）
 
-三个 tab：
+侧栏提供四个中文页面：
 
-- Agent：输入问题 → 跑 agent → 显示答案 / 假设 / 证据 / 审批按钮。
-- Asset Explorer：查资产 + 近期工单。
-- Trace Inspector：选择 request 查看 trace。
+- 资产与数据：筛选 25 台资产，明确选择设备后查看元数据、工单、meter 图表、基线汇总与原始 CSV。
+- Agent 任务：选择问题措辞示例，运行同一套确定性 fixed-plan，显示中文摘要、工具、假设、关联引用、提案与输出结构自检。
+- 运行记录：区分当前 session 快照和 `traces/` 持久化投影；`eval-*` 标记为基准评估。
+- 使用说明：展示最短启动命令、数据路径和正确性边界，并链接 `USER_GUIDE_CN.md`。
 
-审批决策只存在 `st.session_state`（当前会话内存）：普通 widget rerun 后仍然可见，但进程重启或新会话不保留，也不触发任何外部执行（v0 无外部动作）。
+审批决策只存在 `st.session_state`（当前会话内存）：普通 widget rerun 后仍然可见，但进程重启或新会话不保留，也不触发任何外部执行（v0 无外部动作）。切换资产会清除旧 Agent 结果；重建数据后可用“清除会话”刷新 cached runner。
 
-## 16. Docker（状态：文件存在，运行时验证 pending）
+## 16. Docker（本地 Compose 已验证）
 
 - `Dockerfile`：基于 `python:3.11-slim`，安装依赖、生成数据、删除 ground truth、`uvicorn` 启动。
-- `docker-compose.yml`：`api`（8000）+ `ui`（8501）。
+- `docker-compose.yml`：宿主机 `api` 8001 → 容器 8000；宿主机 / 容器 `ui` 8502。
 
 ```bash
 docker compose up --build
 ```
 
-**状态说明**：`Dockerfile` 与 `docker-compose.yml` **文件已存在且内容已评审**，但镜像构建与容器运行**尚未验证**（本地 daemon 不可用）。因此「Docker 可用」是未验证状态，面试时不要声称已验证运行。
+**状态说明**：已执行 `docker compose up --build -d --force-recreate`，API 容器 healthy；`http://localhost:8001/` 307 重定向到 `/docs`，Swagger / health 返回 200；Streamlit `http://localhost:8502/_stcore/health` 返回 200。该结论仅代表本地容器验证，不代表生产部署、CI gate 或 SLA。
 
 ## 17. 运行方式
 
@@ -497,7 +509,7 @@ python -m venv .venv
 
 ## 18. 测试与评估结果
 
-- `pytest`：66 个用例。
+- `pytest`：71 个用例。
 - 离线评估：30 场景、7 项质量指标，另含 `total_scenarios` 场景总数。
 - 当前指标：root-cause top-1/top-3 = 1.0（circular）、proposal gate-state compliance = 1.0（静态）、tool selection = 1.0（static）、recovery = 1.0（proxy）、evidence recall = 0.3698（真实）。
 
@@ -525,12 +537,13 @@ python -m venv .venv
 - 新工具：在 `src/db/repository.py` 加查询，在 `src/tools/` 包装，在 `ToolRegistry` 注册。
 - parquet：需先加入 `pyarrow` 依赖，再改 `meter_readings` 读写。
 - CI：跑 pytest + 评估门禁（目前无 CI）。
-- 可选 LangGraph：迁移 `runner.py` 的显式状态机。
+- 可选 LangGraph：只有在分支、循环、checkpoint 或 human-in-the-loop 复杂度明显增长时，才迁移当前自有 linear orchestration；框架不是当前前置条件。
 
 详见 `NEXT_PHASES.md`。
 
 ## 21. 文档索引（canonical docs）
 
+- `USER_GUIDE_CN.md` — 中文用户指南（面向最终用户的操作手册）
 - `CAPABILITY_MATRIX.md` — 能力矩阵（可演示/不可演示的清单）
 - `EVALUATION_METHODOLOGY.md` — 评估方法学与指标口径
 - `SAFETY_AND_THREAT_MODEL.md` — 安全与威胁模型

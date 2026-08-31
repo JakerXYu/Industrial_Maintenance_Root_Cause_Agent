@@ -100,9 +100,10 @@ held-out baseline；只有检索排序本身被证明是瓶颈时，BM25/FTS 的
 
 ### P1-3 日志与运维容器验证
 
-- 结构化日志（级别、request id 贯穿）；真实构建并运行 Docker 镜像验证（`docker compose up --build` 起 api + ui，健康检查通过）。
+- 结构化日志（级别、request id 贯穿）；本地 Docker Compose build/run/health 已完成，后续加入 CI 容器门禁和部署环境验证。
 - 验收：
-  - [ ] 容器可构建、可运行、健康检查通过；日志可观测、请求 id 可贯穿追踪。
+  - [x] 本地容器可构建、可运行，API / UI 健康检查通过。
+  - [ ] CI 容器构建门禁、部署环境验证、结构化日志和 request id 贯穿追踪。
 
 ### P1-4 检索实验
 

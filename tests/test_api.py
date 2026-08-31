@@ -15,6 +15,14 @@ def test_health(repository, tmp_path):
     assert response.json()["status"] == "ok"
 
 
+def test_root_redirects_to_docs(repository, tmp_path):
+    client = _client(repository, tmp_path)
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
+    assert client.get("/").url.path == "/docs"
+
+
 def test_asset_and_work_orders(repository, tmp_path):
     client = _client(repository, tmp_path)
 

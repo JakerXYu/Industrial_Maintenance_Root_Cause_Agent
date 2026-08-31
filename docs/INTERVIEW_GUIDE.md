@@ -11,8 +11,7 @@
    工业 Agent Harness；LLM 是概率推理组件，外围是确定性软件系统。注意口径：当前是**优雅错误处理**
    （异常降级为 `ERROR`、不崩），**不是**可恢复——无 checkpoint/retry/resume，不能从失败点恢复或重放。
 2. **现状如实说明**（2 分钟）：当前是确定性 baseline，**未接 LLM**；固定 plan + 规则打分，
-   端到端可跑（数据→契约→只读工具→分析→document retrieval / RAG scaffold→agent→API/UI）。Docker 仅有 Dockerfile/compose 产物，
-   运行时未验证（本机无 daemon）。
+   端到端可跑（数据→契约→只读工具→分析→document retrieval / RAG scaffold→agent→API/UI）。Docker Compose 已在本机构建、运行并通过 API/UI 健康检查，但不是生产部署证明。
 3. **架构分层**（5 分钟）：契约（Pydantic，叶子层）→ 数据（只读 SQLite，参数化 SQL）→
    只读工具（ToolResult，empty≠error）→ 分析（趋势/异常）→ document retrieval / RAG scaffold（heading-aware 分块 + 关键词检索）
    → agent（typed state + linear orchestration + 审批门 + trace）→ 评估（30 场景 + 7 项指标，另含场景总数）→ API/UI；Docker 是待验证部署产物。
@@ -20,7 +19,7 @@
    evidence contracts first，grounding 尚未闭环；typed everywhere。
 5. **安全模型**（5 分钟）：只读工具自动执行；写类动作先产出 `ProposedAction`，显式 APPROVE 才可执行；
    v0 无外部写；request_id 严格校验 + 路径包含；密钥 SecretStr；并诚实列出非保证。
-6. **评估与局限**（5 分钟）：66 测试、30 场景、7 项指标（另含场景总数）；诚实说明
+6. **评估与局限**（5 分钟）：71 测试、30 场景、7 项指标（另含场景总数）；诚实说明
    evidence_recall=0.3698（gold 事件证据不可达 + WO 窗口/截断），以及 top-k/tool-selection/safety/recovery
    的循环/静态/代理性质。
 7. **下一步**（3 分钟）：按 `docs/NEXT_PHASES.md` 的 P0/P1/P2 路线图讲：
@@ -35,14 +34,14 @@
 按此顺序演示，每个步骤先点题再操作：
 
 1. 生成/导入可复现数据：`python scripts/generate_synthetic_data.py` + `load_database.py`（固定 seed）。
-2. `pytest`（66 全绿）→ `run_evaluation.py` 生成 `docs/EVALUATION_REPORT.md`。
+2. `pytest`（71 全绿）→ `run_evaluation.py` 生成 `docs/EVALUATION_REPORT.md`。
 3. 起 API：`uvicorn src.api.main:app`，打开 `/docs`：
    - `GET /health`；`GET /assets/A001`；`GET /work-orders?asset_id=A001`；`GET /meter-summary?asset_id=A001`。
    - `POST /agent/query`（问题 `A001 stopped this week...`），展示返回的 `AgentState`：
      `pending_action.status == PENDING_APPROVAL`、`hypotheses` 带证据 id。
    - `POST /actions/{id}/approve` 展示 APPROVED + `approved_by`/`approved_at`；再演示 reject 清空 `approved_at`。
    - `GET /traces/{id}` 展示 trace。
-4. 起 UI：`streamlit run ui/streamlit_app.py`，三个 tab：Agent / Asset Explorer / Trace Inspector。
+4. 起 UI：`streamlit run ui/streamlit_app.py`，按“资产与数据 → Agent 任务 → 运行记录 → 使用说明”演示中文工作流。
 5. 关键“安全瞬间”演示：用非法 `request_id`（如 `bad.id`、`CON`）演示 HTTP 400；
    说明 `execute_pending_action` 非 APPROVED 抛 `PermissionError`，且 v0 无外部副作用。
 
