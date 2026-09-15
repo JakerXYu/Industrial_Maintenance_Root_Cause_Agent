@@ -1,0 +1,87 @@
+# External benchmark: condition monitoring of hydraulic systems (UCI #447).
+# Track B core config. All paths are relative to the project root.
+#
+# Verified facts (do not edit without re-verifying the dataset):
+#   - flat 20-file zip
+#   - SHA-256 of the zip
+#   - 2205 cycles, 1449 stable cycles (stable code 0)
+#   - 14 physical sensors: PS1-6/EPS1 100 Hz/6000, FS1-2 10 Hz/600,
+#     TS1-4/VS1 1 Hz/60; CE/CP/SE are excluded virtual/efficiency sensors.
+
+dataset:
+  name: condition-monitoring-of-hydraulic-systems
+  url: "https://archive.ics.uci.edu/static/public/447/condition+monitoring+of+hydraulic+systems.zip"
+  sha256: "24128aad2ee45eea7e6b63ebbd9992cdf25d0483a2cebefbfc13bc69079af1f2"
+  zip_name: condition_monitoring_of_hydraulic_systems.zip
+  zip_member_count: 20
+  cycle_count: 2205
+  stable_cycle_count: 1449
+  raw_dir: data/raw/hydraulic
+  processed_dir: data/processed/hydraulic
+  artifacts_dir: artifacts/benchmarks/hydraulic
+  profile:
+    file: profile.txt
+    columns: [cooler, valve, pump, accumulator, stable]
+    n_rows: 2205
+    n_cols: 5
+    stable_code: 0
+
+sensors:
+  - {name: PS1, file: PS1.txt, sample_rate_hz: 100, samples_per_cycle: 6000}
+  - {name: PS2, file: PS2.txt, sample_rate_hz: 100, samples_per_cycle: 6000}
+  - {name: PS3, file: PS3.txt, sample_rate_hz: 100, samples_per_cycle: 6000}
+  - {name: PS4, file: PS4.txt, sample_rate_hz: 100, samples_per_cycle: 6000}
+  - {name: PS5, file: PS5.txt, sample_rate_hz: 100, samples_per_cycle: 6000}
+  - {name: PS6, file: PS6.txt, sample_rate_hz: 100, samples_per_cycle: 6000}
+  - {name: EPS1, file: EPS1.txt, sample_rate_hz: 100, samples_per_cycle: 6000}
+  - {name: FS1, file: FS1.txt, sample_rate_hz: 10, samples_per_cycle: 600}
+  - {name: FS2, file: FS2.txt, sample_rate_hz: 10, samples_per_cycle: 600}
+  - {name: TS1, file: TS1.txt, sample_rate_hz: 1, samples_per_cycle: 60}
+  - {name: TS2, file: TS2.txt, sample_rate_hz: 1, samples_per_cycle: 60}
+  - {name: TS3, file: TS3.txt, sample_rate_hz: 1, samples_per_cycle: 60}
+  - {name: TS4, file: TS4.txt, sample_rate_hz: 1, samples_per_cycle: 60}
+  - {name: VS1, file: VS1.txt, sample_rate_hz: 1, samples_per_cycle: 60}
+
+features:
+  functions: [mean, std, min, max]
+  std_ddof: 0
+  expected_count: 56
+
+targets:
+  cooler:
+    column: cooler
+    labels:
+      3: close_to_total_failure
+      20: reduced_efficiency
+      100: full_efficiency
+  valve:
+    column: valve
+    labels:
+      100: optimal_switching_behavior
+      90: small_lag
+      80: severe_lag
+      73: close_to_total_failure
+
+split:
+  ratios:
+    train: 0.6
+    val: 0.2
+    test: 0.2
+  seed: 447
+  group_columns: [cooler, valve, pump, accumulator]
+  max_attempts: 1000
+
+models:
+  seed: 447
+  logistic:
+    imputer_strategy: median
+    scaler: standard
+    max_iter: 2000
+    class_weight: balanced
+  random_forest:
+    imputer_strategy: median
+    n_estimators: 300
+    class_weight: balanced_subsample
+
+report:
+  path: docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md

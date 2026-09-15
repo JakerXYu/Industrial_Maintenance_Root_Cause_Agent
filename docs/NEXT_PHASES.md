@@ -3,13 +3,17 @@
 > **本文是当前路线图与验收标准**，是“下一步做什么”的唯一事实来源。
 > 文中所有条目均为**待实现项**，任何一条都不构成“已实现”声明；勾选状态一律以 `- [ ]` 表示未完成。
 > 历史档案：`docs/WORKLOG.md`（总结日志）、`docs/WORKLOG_DETAILS.md`（详细日志）、`docs/PLAN_8H.md`（时间盒计划快照）。
-> 当前能力与系统手册：`docs/CAPABILITY_MATRIX.md`、`docs/HANDBOOK.md`；离线评估见 `docs/EVALUATION_REPORT.md`。
+> 当前能力与系统手册：`docs/CAPABILITY_MATRIX.md`、`docs/HANDBOOK.md`；Track A 报告见
+> `docs/EVALUATION_REPORT.md`，已完成的 Track B 外部基准见
+> `docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md` 与 `docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`。
 
 ## 总原则
 
 1. 每项在“完成”前必须同时具备：明确验收标准、自动化测试、可复现脚本或 CI 门禁；不满足验收即视为未完成。
 2. 任何“真实 LLM / 真实写 / 向量检索”能力都不得成为默认依赖；必须有确定性兜底（fake provider、规则基线、keyword/FTS 检索）。
 3. 每一步都要回答“怎么证明它做了，以及没做错”，落到指标而非主观判断。
+4. Track B 已独立验证真实多传感器数据的摄取、特征、held-out 条件分类和 typed evidence；
+   它不替代 P0-6 尚未完成的完整 Agent held-out 评估，也不得扩写成 RCA / 工单 / 文档能力。
 
 ## P0 — 可复现的工程基线与证据闭环（先于一切外部依赖）
 
@@ -76,6 +80,9 @@ held-out baseline；只有检索排序本身被证明是瓶颈时，BM25/FTS 的
 
 ### P0-6 留出非循环评估（held-out，non-circular）
 
+> 已完成的 Track B 解决了 diagnostic/evidence layer 的外部数据验证，但 UCI 数据没有工单、文档和
+> Agent task ground truth，因此下面面向完整 Agent workflow 的 held-out 门禁仍是待办。
+
 - 建立 held-out 评估集，与开发 / 调参所用场景隔离，避免“对着答案调参数”的循环。
 - 指标覆盖：task success、tool selection precision / recall、tool argument 正确性、retrieval 命中、citation 正确性、unsupported-claim 检测、recovery、latency、token cost。
 - 顺带补只读工具覆盖面（维护 / 备件 / 事件契约与工具），用于提升证据召回并纳入上述指标。
@@ -100,9 +107,10 @@ held-out baseline；只有检索排序本身被证明是瓶颈时，BM25/FTS 的
 
 ### P1-3 日志与运维容器验证
 
-- 结构化日志（级别、request id 贯穿）；本地 Docker Compose build/run/health 已完成，后续加入 CI 容器门禁和部署环境验证。
+- 结构化日志（级别、request id 贯穿）；Historical base Docker Compose 曾完成 build/run/health。Current Track B 依赖镜像尚未重建验证，后续补 current smoke、CI 容器门禁和部署环境验证。
 - 验收：
-  - [x] 本地容器可构建、可运行，API / UI 健康检查通过。
+  - [x] Historical base 容器曾可构建、运行并通过 API / UI 健康检查。
+  - [ ] Current Track B 依赖镜像 rebuild / health smoke（本次 daemon 不可用）。
   - [ ] CI 容器构建门禁、部署环境验证、结构化日志和 request id 贯穿追踪。
 
 ### P1-4 检索实验

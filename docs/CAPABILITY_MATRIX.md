@@ -6,9 +6,12 @@
 > 真实写、向量 DB），并给出准确限定；其余缺失的核心目标一律记为 `MISSING`。
 > 处置：`保持`=维持现状；`加固`=补齐约束/测试/真实语义；`新增`=后续实现；`延后`=条件满足才做。
 
-事实基线：确定性 baseline（未接 LLM）；固定 plan；只读工具；SQLite；71 测试；30 场景；
-评估为 **7 项指标 + `total_scenarios` 计数**（不是 8 项指标）。
-来源：`../README.md`、`docs/HANDBOOK.md`、`docs/NEXT_PHASES.md`（P0/P1/P2 路线图）、`docs/EVALUATION_REPORT.md`。
+事实基线：确定性 baseline（未接 LLM）；固定 plan；只读工具；SQLite；114 测试；30 场景（Track A）；
+评估为 **7 项指标 + `total_scenarios` 计数**（不是 8 项指标，仅 Track A）。
+另有 Track B 外部基准（UCI #447）独立验证摄取/特征/条件分类/held-out/typed 证据契约。
+来源：`../README.md`、`docs/HANDBOOK.md`、`docs/NEXT_PHASES.md`（P0/P1/P2 路线图）、
+`docs/EVALUATION_REPORT.md`、`docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md`、
+`docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`。
 
 ## 1. Agent Runtime（智能体运行时）
 
@@ -77,6 +80,11 @@
 | Recovery Rate（恢复率） | PARTIAL | 场景级终态断言（error/complete/pending），非重试/恢复（代理） | 加固 |
 | Latency（延迟） | PARTIAL | `total_latency_ms` 与工具 `latency_ms` 已记录（`TraceRecord`/`ToolCallTrace`），但未作为评估指标汇总报告 | 加固（P0-6） |
 | Token / API Cost（Token / 成本） | MISSING | 无 LLM，无成本 | 新增（P0-6） |
+| External benchmark（外部基准，Track B） | IMPLEMENTED | `src/benchmarks/hydraulic.py` + `scripts/*_hydraulic_benchmark.py`；摄取/特征/条件分类/held-out/typed 证据契约；结果见 `docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md` | 保持（不扩展到 RCA/工单/文档/生产声明） |
+
+> Track B 只验证「摄取 → 特征 → 条件分类 → held-out → typed 诊断证据契约」，**不**验证完整 RCA、
+> 工单生成、文档检索、工厂部署或因果证明；其 `evidence_*` 检查是契约检查，不是诊断正确性。
+> 权威边界见 `docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`。
 
 ## 6. Safety（安全）
 
@@ -96,17 +104,39 @@
 | Logging / tracing（日志 / 追踪） | PARTIAL | trace 有（`src/agent/tracing.py` 落 `TraceRecord`，可观测性/诊断记录，非审计）；结构化日志无 | 加固（P1-3） |
 | Config（配置） | IMPLEMENTED | `src/config.py` `Settings` + 环境变量 + `SecretStr`；`.env.example` | 保持 |
 | Error handling（错误处理） | PARTIAL | `ToolResult` 错误码 + `runner` 降级 ERROR；无重试/兜底 | 加固（P0-3） |
-| Reproducible test cases（可复现用例） | IMPLEMENTED | 固定 seed 生成 + 71 测试 + 30 场景 | 保持 |
-| Unit / integration / eval tests（单测 / 集成 / 评估） | IMPLEMENTED | `tests/` 71 用例跨层 + `src/evaluation/` 离线评估 | 保持 |
-| Docker | IMPLEMENTED | 本地 Compose 已真实 build/recreate；API 8001→8000 healthy，UI 8502 health 200 | 生产部署与 CI gate 仍属后续 |
+| Reproducible test cases（可复现用例） | IMPLEMENTED | 固定 seed 生成 + 114 测试 + 30 个 Track A 场景 + 12 个 Track B evidence 场景 | 保持 |
+| Unit / integration / eval tests（单测 / 集成 / 评估） | IMPLEMENTED | `tests/` 114 用例跨层 + 双轨离线评估 | 保持 |
+| Docker | PARTIAL | Dockerfile/Compose 存在且 config 通过；Historical base 镜像曾 healthy，但 Current Track B 依赖镜像因 daemon 不可用未重建验证 | 补 current build/health + CI gate |
 | API | IMPLEMENTED | `src/api/main.py`（FastAPI） | 保持 |
 | CLI or UI（命令行或界面） | IMPLEMENTED | `ui/streamlit_app.py`（Streamlit）；无 CLI | 保持 |
+
+## 8. External Benchmark（外部基准，Track B）
+
+> 本节只登记**已真实存在并被测试覆盖**的 Track B 代码（UCI #447 液压基准）。证据路径均指向
+> `src/benchmarks/hydraulic.py`、`src/contracts/evidence.py`、`src/evaluation/diagnostic_integration.py`。
+> 结果与权威边界见 `docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md` 与
+> `docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`。本表**不**升级任何 LLM / RAG / retry /
+> checkpoint / memory / 语义 grounding 相关项——那些项仍按上文 §1–§4 的现状记录，不因 Track B 改变。
+
+| 能力项 | 状态 | 证据路径 | 目标处置 |
+|---|---|---|---|
+| External data adapter（外部数据摄取适配器） | IMPLEMENTED | `src/benchmarks/hydraulic.py` `download_and_extract`（std-lib 下载 + SHA-256 硬校验 + 原子替换 + zip-slip 安全解压 + 必需文件校验，幂等） | 保持（不扩展到 RCA/工单/生产） |
+| Multi-rate sensor parser（多采样率传感器解析） | IMPLEMENTED | `src/benchmarks/hydraulic.py` `read_sensor_matrix`（一次只读一个传感器矩阵；三档采样率 100 Hz/6000、10 Hz/600、1 Hz/60） | 保持 |
+| Feature extraction（特征提取） | IMPLEMENTED | `src/benchmarks/hydraulic.py` `compute_features` + `feature_names`（14 物理传感器 × 4 统计量 mean/std ddof=0/min/max = 56 特征） | 保持 |
+| Profile-group split（按配置组划分） | IMPLEMENTED | `src/benchmarks/hydraulic.py` `split_groups` / `_greedy_group_split`（complete-profile group 与循环均不跨集，60/20/20，seed=447，覆盖全部类别，不回退随机 cycle） | 保持 |
+| Diagnostic classifier（诊断条件分类器） | IMPLEMENTED | `src/benchmarks/hydraulic.py` `make_logistic_pipeline` / `make_random_forest_pipeline` + `run`（固定超参 sklearn pipeline；验证集 macro-F1 选型，测试集只报一次） | 保持 |
+| Diagnostic evidence contract（诊断证据契约） | IMPLEMENTED | `src/contracts/evidence.py` `DiagnosticEvidence` → `to_evidence_item`（`source_type=DIAGNOSTIC`、稳定 `source_id`、`causal_status=non_causal_condition_classification`） | 保持 |
+| Evidence integration（证据集成） | IMPLEMENTED | `src/evaluation/diagnostic_integration.py` `integrate_diagnostic_evidence`（DIAGNOSTIC 证据挂载 → `AgentState` → 非因果 `Hypothesis` / fail-closed abstain，无 `ProposedAction`） | 保持 |
+| Held-out external evaluation（外部留出评估） | IMPLEMENTED | `src/evaluation/diagnostic_integration.py` `evaluate_diagnostic_integration` / `evaluate_hydraulic_prediction_evidence`（12 确定性契约场景 = 8 真实 + 2 缺失 + 2 矛盾；7 项契约检查） | 保持（不扩展到语义 grounding / RCA 正确性） |
 
 ## 交叉引用
 
 - 系统实现细节：`docs/HANDBOOK.md`
 - P0/P1/P2 路线图与非目标：`docs/NEXT_PHASES.md`
-- 评估结果：`docs/EVALUATION_REPORT.md`
+- 评估结果（Track A）：`docs/EVALUATION_REPORT.md`
+- 评估结果（Track B）：`docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md`
+- 外部基准权威说明（Track B）：`docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`
+- 外部证据集成链路（Track B）：`docs/EXTERNAL_EVIDENCE_INTEGRATION.md`
 - 指标定义与局限：`docs/EVALUATION_METHODOLOGY.md`
 - 安全威胁建模：`docs/SAFETY_AND_THREAT_MODEL.md`
 - 面试答辩：`docs/INTERVIEW_GUIDE.md`

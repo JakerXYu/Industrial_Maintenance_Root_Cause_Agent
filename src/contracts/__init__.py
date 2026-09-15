@@ -18,7 +18,7 @@ from .common import (
     ToolErrorCode,
     ToolResult,
 )
-from .evidence import EvidenceItem, EvidenceSourceType
+from .evidence import DiagnosticEvidence, EvidenceItem, EvidenceSourceType
 from .meter import (
     MeterReading,
     MeterSummary,
@@ -45,6 +45,7 @@ __all__ = [
     "AssetCriticality",
     "AssetStatus",
     "AssetType",
+    "DiagnosticEvidence",
     "EvidenceItem",
     "EvidenceSourceType",
     "Confidence",

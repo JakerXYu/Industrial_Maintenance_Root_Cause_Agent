@@ -63,10 +63,41 @@
 | 分析 analytics | trend / anomaly / meter summary（确定性） | 完成 |
 | Document retrieval / RAG scaffold | heading-aware 分块 + token-overlap 关键词检索 | 部分完成（无 LLM，文档不参与根因打分） |
 | Agent | typed state + 线性流程 + 审批门 + trace | 部分完成（无显式 graph / checkpoint / recovery） |
-| 评估 evaluation | 30 个合成场景 + 7 项指标（另含场景总数） | 部分完成（回归自检，非泛化证明） |
+| 评估 evaluation（Track A） | 30 个合成场景 + 7 项指标（另含场景总数） | 部分完成（回归自检，非泛化证明） |
+| 评估 evaluation（Track B） | UCI #447 外部真实传感器：摄取/特征/条件分类/held-out/typed 证据契约 | 完成（仅条件分类与证据契约，非 RCA） |
 | API / UI | FastAPI + Streamlit | 完成 |
-| Docker | Dockerfile + docker-compose.yml | 本机构建、运行与健康检查已验证（非生产部署） |
+| Docker | Dockerfile + docker-compose.yml | PARTIAL：历史 base 镜像曾通过本地健康检查；当前 Track B 依赖镜像因 daemon 不可用未重建，Compose config 已通过 |
 | LLM / CI / 结构化应用日志 / 认证 | — | 未实现 |
+
+## Evaluation Tracks（评估双轨）
+
+- **Track A — Controlled Synthetic Agent Evaluation**（受控合成 Agent 评估）：25 资产、180 天、
+  30 场景、7 项指标，验证「确定性基线端到端跑通 + 回归自检」；但 top-k 与合成数据同源，属循环验证，
+  不能外推真实数据。
+- **Track B — External Real-Sensor Diagnostic Evaluation**（外部真实传感器诊断评估），只展示：
+
+  - Dataset：UCI Hydraulic Systems
+  - Data：2205 cycles，14 physical sensors，1–100 Hz
+  - Split：profile-group-held-out
+  - Results：Cooler Macro-F1 **1.000**；Valve Macro-F1 **0.5692**
+
+> **Caveat（紧接的边界说明）：** Cooler perfect separability is specific to the current
+> stable-regime benchmark setup and is not an end-to-end Agent accuracy result.
+>
+> 中文解释：Cooler 的完美可分性只针对当前基准设定（stable-regime-only、56 维统计特征、
+> profile-group-held-out 划分），并不是端到端 Agent 准确率。
+
+口径一句话（面试统一引用）：
+
+> The external hydraulic benchmark evaluates the real-sensor diagnostic evidence layer and its integration with the Agent evidence contract; it does not measure end-to-end root-cause-agent accuracy.
+>
+> 中文解释：Hydraulic Systems 外部 Benchmark 验证的是真实传感器条件下的诊断证据层及其与
+> Agent Evidence Contract 的集成，而不是完整端到端 Root-Cause Agent 的准确率。
+
+Track A 详见 `docs/EVALUATION_METHODOLOGY.md` 与 `docs/EVALUATION_REPORT.md`；Track B 详见
+`docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md` 与生成报告
+`docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md`。两轨无数据重叠；Track B classifier harness 独立，
+evidence integration 有意复用共享 `AgentState` / `EvidenceItem` contracts。结果不能互相代替。
 
 ## 代表性演示路径
 
@@ -75,7 +106,7 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
 .\.venv\Scripts\python scripts\generate_synthetic_data.py   # 可复现数据 + ground truth
 .\.venv\Scripts\python scripts\load_database.py             # 入库
-.\.venv\Scripts\python -m pytest                            # 71 passed
+.\.venv\Scripts\python -m pytest                            # 114 passed
 .\.venv\Scripts\python scripts\run_evaluation.py            # 30 scenarios → 报告
 .\.venv\Scripts\python -m uvicorn src.api.main:app --reload # http://127.0.0.1:8000/docs
 ```
@@ -92,9 +123,10 @@ GET  /traces/{request_id}
   → TraceRecord（tool_calls / evidence_ids / hypothesis_causes）
 ```
 
-## 实测结果与口径警示
+## 实测结果与口径警示（Track A 合成数据）
 
-30 个合成场景、71 个测试全绿。指标（`docs/EVALUATION_REPORT.md` 为原始报告）：
+30 个合成场景、114 个测试全绿。指标（`docs/EVALUATION_REPORT.md`
+为原始报告，仅覆盖 Track A）：
 
 | 指标 | 值 | 口径警示 |
 |---|---|---|
@@ -139,7 +171,7 @@ python -m venv .venv
 # UI（另一个终端）
 .\.venv\Scripts\python -m streamlit run ui/streamlit_app.py
 
-# Docker（已验证：API http://localhost:8001/；UI http://localhost:8502/）
+# Docker（当前需先启动 daemon；Track B 依赖镜像尚未重建验证）
 docker compose up --build
 ```
 
@@ -175,9 +207,13 @@ docker compose up --build
 - [`docs/EVALUATION_METHODOLOGY.md`](docs/EVALUATION_METHODOLOGY.md) — 评估方法学与指标口径
 - [`docs/SAFETY_AND_THREAT_MODEL.md`](docs/SAFETY_AND_THREAT_MODEL.md) — 安全与威胁模型
 - [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md) — 面试讲解指南
+- [`docs/EXTERNAL_EVIDENCE_INTEGRATION.md`](docs/EXTERNAL_EVIDENCE_INTEGRATION.md) — Track B 诊断证据进入 Agent Evidence Contract 的边界
+- [`PROJECT01_REVIEW_MERGED.md`](PROJECT01_REVIEW_MERGED.md) — 冻结版本外部评审合并稿
 
 过程与规划：
 
-- [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) — 离线评估原始报告
+- [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) — 离线评估原始报告（Track A）
+- [`docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md`](docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md) — 外部液压基准原始报告（Track B，生成物）
+- [`docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`](docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md) — 液压系统外部基准权威说明（Track B）
 - [`docs/NEXT_PHASES.md`](docs/NEXT_PHASES.md) — P0/P1/P2 路线图、验收标准与非目标
 - [`docs/PLAN_8H.md`](docs/PLAN_8H.md) / [`docs/WORKLOG.md`](docs/WORKLOG.md) / [`docs/WORKLOG_DETAILS.md`](docs/WORKLOG_DETAILS.md) — 历史计划与工作日志

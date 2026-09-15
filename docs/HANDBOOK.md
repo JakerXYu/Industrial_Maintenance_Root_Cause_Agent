@@ -18,7 +18,8 @@
 | 5. 跟一次 Agent 请求 | 顺序跟 interpret → plan → execute → synthesize | `src/agent/` | State 如何变化，工具如何转证据，假设与提案如何生成？ |
 | 6. 看安全与可观测 | 检查 request id、approval、trace | `request_id.py`、`policy.py`、`tracing.py` | trace、checkpoint、audit、memory 为什么不是一回事？ |
 | 7. 看评估 | 运行 30 场景并对照方法论 | `src/evaluation/`、`EVALUATION_METHODOLOGY.md` | 为什么多个 1.0 不是泛化证明，0.3698 暴露了什么？ |
-| 8. 看交付边界 | 体验 API / Docker，再读 roadmap | `src/api/main.py`、Docker、`CAPABILITY_MATRIX.md`、`NEXT_PHASES.md` | 当前完成了什么，真实 LLM / 写入 / 生产化还缺什么？ |
+| 8. 看外部基准（Track B） | 跑 UCI #447 液压基准并对照边界 | `src/benchmarks/hydraulic.py`、`docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md` | 外部真实数据验证了什么，为什么它不等于 RCA / 生产可用？ |
+| 9. 看交付边界 | 体验 API / Docker，再读 roadmap | `src/api/main.py`、Docker、`CAPABILITY_MATRIX.md`、`NEXT_PHASES.md` | 当前完成了什么，真实 LLM / 写入 / 生产化还缺什么？ |
 
 建议第一次源码调试从 `AgentRunner.run("A001 stopped this week")` 开始，在
 `planner.interpret`、`executor.execute`、`synthesizer.synthesize` 和 `TraceStore.save`
@@ -98,7 +99,10 @@ UI / API
 ├─ scripts/
 │  ├─ generate_synthetic_data.py   # 生成合成数据 + ground truth
 │  ├─ load_database.py             # 导入 SQLite
-│  └─ run_evaluation.py            # 跑离线评估
+│  ├─ run_evaluation.py            # 跑离线评估（Track A）
+│  ├─ download_hydraulic_dataset.py # 下载 UCI #447（Track B）
+│  ├─ prepare_hydraulic_benchmark.py # 特征/划分（Track B）
+│  └─ run_hydraulic_benchmark.py   # 训练/报告/证据集成（Track B）
 ├─ src/
 │  ├─ contracts/                   # Pydantic 契约（叶子层）
 │  ├─ config.py                    # 环境配置
@@ -107,19 +111,23 @@ UI / API
 │  ├─ analytics/                   # 趋势 / 异常 / summary
 │  ├─ rag/                         # 分块 / 关键词检索
 │  ├─ agent/                       # typed state / 线性编排 / 审批 / trace
-│  ├─ evaluation/                  # 离线评估
+│  ├─ evaluation/                  # 离线评估（Track A）+ 诊断证据集成
+│  ├─ benchmarks/                  # 外部基准（Track B，与 Track A 解耦）
 │  └─ api/                         # FastAPI
 ├─ ui/streamlit_app.py             # Streamlit
-├─ data/raw/                       # 生成的 CSV
+├─ configs/benchmarks/             # Track B 配置（hydraulic_systems.yaml）
+├─ data/raw/                       # 生成的 CSV（含 data/raw/hydraulic/ 忽略）
+├─ data/processed/hydraulic/       # Track B 特征/划分（忽略）
 ├─ data/docs/                      # 虚构维修文档（5 篇）
 ├─ data/industrial.db              # SQLite
-├─ tests/                          # 71 个用例
+├─ artifacts/benchmarks/hydraulic/ # Track B 模型/指标/预测（忽略）
+├─ tests/                          # 114 个 pytest 用例
 ├─ Dockerfile
 └─ docker-compose.yml
 ```
 
-注意：**没有 CLI 入口**。仅有 `scripts/*.py` 三个可执行脚本（数据生成、入库、评估），
-Agent 的交互入口是 API 与 Streamlit UI。
+注意：**没有 CLI 入口**。仅有 `scripts/*.py` 可执行脚本（Track A 的数据生成/入库/评估，
+以及 Track B 的下载/准备/运行），Agent 的交互入口是 API 与 Streamlit UI。
 
 ## 4. 数据模型
 
@@ -324,6 +332,12 @@ interpret（正则解析资产 A\d{3}）
 - `metrics.compute_metrics(scenarios, results)`：7 个质量指标，另含 `total_scenarios` 场景总数。
 - `runner.run_evaluation(repo, traces_dir, report_path)`：跑场景、算指标、写报告。
 
+**Track B（外部基准）不在本层**：`src/benchmarks/hydraulic.py` 是独立模块，不 import
+`src.evaluation` / `src.agent` / `src.contracts` / `src.db`，只做 UCI #447 的摄取/特征/条件分类/
+held-out/证据契约。证据集成边界见 `src/evaluation/diagnostic_integration.py`（独立于 Track A 的
+planner/synthesizer/scenarios/metrics）。权威口径见 `docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`
+与生成报告 `docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md`。
+
 ### 13.1 指标定义与「代理 / 静态 / 循环」口径
 
 | 指标 | 计算 | 口径 |
@@ -483,7 +497,7 @@ Base：`http://127.0.0.1:8000`，交互式文档 `/docs`。当前 API **无认�
 
 审批决策只存在 `st.session_state`（当前会话内存）：普通 widget rerun 后仍然可见，但进程重启或新会话不保留，也不触发任何外部执行（v0 无外部动作）。切换资产会清除旧 Agent 结果；重建数据后可用“清除会话”刷新 cached runner。
 
-## 16. Docker（本地 Compose 已验证）
+## 16. Docker（Historical 验证 / Current rebuild 未验证）
 
 - `Dockerfile`：基于 `python:3.11-slim`，安装依赖、生成数据、删除 ground truth、`uvicorn` 启动。
 - `docker-compose.yml`：宿主机 `api` 8001 → 容器 8000；宿主机 / 容器 `ui` 8502。
@@ -492,7 +506,7 @@ Base：`http://127.0.0.1:8000`，交互式文档 `/docs`。当前 API **无认�
 docker compose up --build
 ```
 
-**状态说明**：已执行 `docker compose up --build -d --force-recreate`，API 容器 healthy；`http://localhost:8001/` 307 重定向到 `/docs`，Swagger / health 返回 200；Streamlit `http://localhost:8502/_stcore/health` 返回 200。该结论仅代表本地容器验证，不代表生产部署、CI gate 或 SLA。
+**状态说明**：Historical base 版本曾执行 `docker compose up --build -d --force-recreate` 并通过 API/UI health。Current 冻结版本新增 scikit-learn / PyYAML 后，本次环境 Docker daemon 不可用；`docker compose config --quiet` 已通过，但新依赖镜像的 runtime rebuild / health **NOT VERIFIED**。历史验证不能替代当前镜像验证，也不代表生产部署、CI gate 或 SLA。
 
 ## 17. 运行方式
 
@@ -509,11 +523,15 @@ python -m venv .venv
 
 ## 18. 测试与评估结果
 
-- `pytest`：71 个用例。
-- 离线评估：30 场景、7 项质量指标，另含 `total_scenarios` 场景总数。
-- 当前指标：root-cause top-1/top-3 = 1.0（circular）、proposal gate-state compliance = 1.0（静态）、tool selection = 1.0（static）、recovery = 1.0（proxy）、evidence recall = 0.3698（真实）。
+- `pytest`：114 个用例（本轮 Track B 前 71，新增 43）。
+- 离线评估（Track A）：30 场景、7 项质量指标，另含 `total_scenarios` 场景总数。
+- 当前指标（Track A）：root-cause top-1/top-3 = 1.0（circular）、proposal gate-state compliance = 1.0（静态）、tool selection = 1.0（static）、recovery = 1.0（proxy）、evidence recall = 0.3698（真实）。
+- 外部基准（Track B，UCI #447）：只验证摄取/特征/条件分类/held-out/typed 证据契约；
+  cooler 分类 = 1.0，valve logistic Accuracy 0.5897 / Macro-F1 0.5692（保留负结果与 80↔90 混淆）。
+  详见 `docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md`。
 
-口径详见第 13.1 节与 `EVALUATION_METHODOLOGY.md`。
+口径详见第 13.1 节与 `EVALUATION_METHODOLOGY.md`；Track B 边界见
+`docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`。
 
 ## 19. 安全与权限模型
 
@@ -549,5 +567,7 @@ python -m venv .venv
 - `SAFETY_AND_THREAT_MODEL.md` — 安全与威胁模型
 - `INTERVIEW_GUIDE.md` — 面试讲解指南
 - `NEXT_PHASES.md` — 后续阶段设计
-- `EVALUATION_REPORT.md` — 离线评估原始报告
+- `EVALUATION_REPORT.md` — 离线评估原始报告（Track A）
+- `EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md` — 外部液压基准原始报告（Track B，生成物）
+- `benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md` — 液压系统外部基准权威说明（Track B）
 - `PLAN_8H.md` / `WORKLOG.md` / `WORKLOG_DETAILS.md` — 开发计划与工作日志

@@ -74,13 +74,22 @@ scripts/load_database.py               入库
         │  → data/industrial.db（SQLite，只读打开）
         ▼
 python -m pytest                       自检
-        │  → 71 个用例全绿
+        │  → 114 个用例全绿
         ▼
 scripts/run_evaluation.py              离线评估
         │  → 30 场景 → docs/EVALUATION_REPORT.md + traces/eval-*.json
         ▼
 uvicorn / streamlit run                运行（API / UI）
            → 每次请求落一份 traces/<request_id>.json
+```
+
+独立 Track B 不进入上述 Agent/SQLite 链路：
+
+```text
+download_hydraulic_dataset.py → data/raw/hydraulic/（忽略）
+prepare_hydraulic_benchmark.py → data/processed/hydraulic/（忽略）
+run_hydraulic_benchmark.py → 模型/指标 artifact（忽略）
+                           → docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md（提交）
 ```
 
 对应的完整命令：
@@ -117,6 +126,10 @@ uvicorn / streamlit run                运行（API / UI）
 | `data/industrial.db` | SQLite 数据库（由 `load_database.py` 生成；运行时以 `mode=ro` 只读打开） |
 | `traces/*.json` | 每次运行的 `TraceRecord` 快照（只读、不可重放；文件名即 `request_id`） |
 | `docs/EVALUATION_REPORT.md` | 离线评估原始报告（由 `run_evaluation.py` 生成，可覆盖） |
+| `data/raw/hydraulic/` | UCI #447 原始 ZIP 与 20 个解压文件（Track B，忽略） |
+| `data/processed/hydraulic/` | 1449 stable cycles 的 56 维特征与 split manifests（Track B，忽略） |
+| `artifacts/benchmarks/hydraulic/` | Track B 模型、预测、metrics、evidence integration（忽略） |
+| `docs/EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md` | Track B 外部真实传感器生成报告（生成但提交） |
 
 ### 3.2 生成 / 忽略 / 提交 策略
 
@@ -154,7 +167,7 @@ uvicorn / streamlit run                运行（API / UI）
 
 > 当前 API **无认证**；`pending` 审批表是进程内 `dict`，重启即丢、多 worker 不共享。
 
-### 4.3 Docker（本地 Compose 已验证）
+### 4.3 Docker（Historical 验证 / Current rebuild 未验证）
 
 ```powershell
 docker compose up --build
@@ -166,7 +179,9 @@ docker compose up --build
 - API health：`http://localhost:8001/health`
 - Streamlit：`http://localhost:8502/`
 
-已在本机完成镜像 build、容器 recreate 和 API/UI 健康检查。该结论不代表生产部署、CI 验证或 SLA。
+Historical base 镜像曾完成 build、recreate 和 API/UI 健康检查。Current 冻结版本新增 Track B 依赖后，
+本次环境 Docker daemon 不可用；Compose config 已通过，但当前镜像 rebuild / health **NOT VERIFIED**。
+启动 daemon 后需重新执行上方命令。该状态不代表生产部署、CI 验证或 SLA。
 
 ---
 
@@ -251,7 +266,11 @@ Agent 的数据窗口固定为：最近 37 天 meter 读取，综合时比较最
 | 重新生成合成数据（覆盖 `data/raw/*.csv` 与 `data/docs/*.md`） | `.\.venv\Scripts\python scripts\generate_synthetic_data.py` |
 | 重新入库（drop + recreate 各表，覆盖 `data/industrial.db`） | `.\.venv\Scripts\python scripts\load_database.py` |
 | 重新跑离线评估（覆盖 `docs/EVALUATION_REPORT.md` 与 `traces/eval-*.json`） | `.\.venv\Scripts\python scripts\run_evaluation.py` |
-| 完整重建（一步到位） | 依次执行上面三条，再跑 `-m pytest` |
+| 下载 UCI Track B | `.\.venv\Scripts\python scripts\download_hydraulic_dataset.py` |
+| 准备 Track B 特征/划分 | `.\.venv\Scripts\python scripts\prepare_hydraulic_benchmark.py` |
+| 训练/评估 Track B 并生成外部报告 | `.\.venv\Scripts\python scripts\run_hydraulic_benchmark.py` |
+| Track A 完整重建 | 依次执行 synthetic generate / load / evaluation，再跑 `-m pytest` |
+| Track B 完整重建 | 依次执行 hydraulic download / prepare / run，再跑 `-m pytest` |
 
 生成器是确定性（固定 seed `42`）、幂等（覆盖输出）。「最近 N 天」以数据内
 `MAX(timestamp)` 为基准（数据时间范围约 `2025-12-01` 起 180 天），**不按你电脑的当前日期**。
@@ -260,13 +279,13 @@ Agent 的数据窗口固定为：最近 37 天 meter 读取，综合时比较最
 
 ## 8. 验证结果
 
-### 8.1 pytest（当前基线 71 通过）
+### 8.1 pytest（当前基线 114 通过）
 
 ```powershell
 .\.venv\Scripts\python -m pytest
 ```
 
-期望输出 `71 passed`。这验证的是**完整性与内部一致性**：各组件按自己声明的行为工作、
+期望输出 `114 passed`（Track B 前 71，新增 43）。这验证的是**完整性与内部一致性**：各组件按自己声明的行为工作、
 不崩溃、契约自洽。
 
 ### 8.2 离线评估（30 场景）
@@ -315,6 +334,13 @@ unauthorized-write），写报告到 [EVALUATION_REPORT.md](EVALUATION_REPORT.md
 或用 UI 的「运行记录」页选择对应 request。trace 用于**诊断一次运行的内部过程**，不是审计、
 不是检查点、不是记忆。
 
+### 8.6 External Track B
+
+运行三条 hydraulic 脚本后阅读
+[EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md](EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md) 与
+[HYDRAULIC_SYSTEMS_BENCHMARK.md](benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md)。Track B 只验证
+UCI 液压台架的条件分类与 diagnostic evidence contract；没有工单、文档或完整 RCA。
+
 ---
 
 ## 9. 排障
@@ -325,7 +351,7 @@ unauthorized-write），写报告到 [EVALUATION_REPORT.md](EVALUATION_REPORT.md
 | 运行记录为空 | 还没跑过 Agent 或评估。先在“Agent 任务”运行一次分析，或跑 `run_evaluation.py` 生成 `eval-*` trace |
 | 查某资产工单 / 读数为空 | 合法范围是 `A001`–`A025`；且「最近 N 天」按数据内最新时间戳（约 2026-05-30）计算，不是今天。若资产 id 拼错会提示 `Asset not found` |
 | 本地端口冲突（8000 / 8501） | Uvicorn 可用 `--port 8002`；Streamlit 可用 `--server.port 8503` |
-| Docker 起不来 / `daemon` 报错 | 确认 Docker Desktop 已启动；本项目已验证的 Compose 端口是 API 8001、UI 8502 |
+| Docker 起不来 / `daemon` 报错 | 确认 Docker Desktop 已启动；Compose 端口是 API 8001、UI 8502。Current Track B 依赖镜像尚需重新 build/health |
 | 标记已复核后刷新页面或重启，审批状态/历史不见了 | 审批是会话内内存态（UI 用 `st.session_state`，API 用进程内 `dict`），重启即丢，这是设计内的边界 |
 | `docs/EVALUATION_REPORT.md` 看起来过期 / 与代码不一致 | 重新跑 `run_evaluation.py` 覆盖；改指标逻辑时必须同步 `EVALUATION_METHODOLOGY.md` 与报告（方法论要求） |
 | 想看某个 request 的 trace 报 404 | 该 `request_id` 不在当前进程的 `traces/` 下；审批动作只在当前进程内存中，重启后 `/actions/{id}/approve` 会 404 |
@@ -344,8 +370,13 @@ python -m venv .venv
 .\.venv\Scripts\python scripts\load_database.py
 
 # 3) 自检与评估（约几秒）
-.\.venv\Scripts\python -m pytest                  # 期望 71 passed
+.\.venv\Scripts\python -m pytest                  # 期望 114 passed
 .\.venv\Scripts\python scripts\run_evaluation.py  # 期望 30 scenarios
+
+# 可选：Track B 外部真实传感器基准（首次需下载约 73 MB）
+.\.venv\Scripts\python scripts\download_hydraulic_dataset.py
+.\.venv\Scripts\python scripts\prepare_hydraulic_benchmark.py
+.\.venv\Scripts\python scripts\run_hydraulic_benchmark.py
 
 # 4) 起 UI（另开一个终端）
 .\.venv\Scripts\python -m streamlit run ui/streamlit_app.py
@@ -367,6 +398,8 @@ python -m venv .venv
 - [HANDBOOK.md](HANDBOOK.md) — 当前实现综合参考（架构 / 契约 / API 权威细节版）
 - [EVALUATION_METHODOLOGY.md](EVALUATION_METHODOLOGY.md) — 指标分子 / 分母与所有 caveat 的唯一权威来源
 - [EVALUATION_REPORT.md](EVALUATION_REPORT.md) — 离线评估原始报告（生成物）
+- [EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md](EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md) — Track B 外部传感器报告
+- [HYDRAULIC_SYSTEMS_BENCHMARK.md](benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md) — Track B 数据、方法、结果与边界
 - [SAFETY_AND_THREAT_MODEL.md](SAFETY_AND_THREAT_MODEL.md) — 安全与威胁模型
 - [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md) — 能力矩阵
 - [NEXT_PHASES.md](NEXT_PHASES.md) — 后续阶段（LLM / heldout / CI / 生产写 blocker）

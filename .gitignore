@@ -20,3 +20,10 @@ venv/
 data/raw/*.csv
 data/industrial.db
 traces/*.json
+
+# Track B external benchmark (hydraulic systems): raw download, prepared
+# features/manifests, and model/prediction artifacts are ignored; the committed
+# config and generated report are kept.
+data/raw/hydraulic/
+data/processed/hydraulic/
+artifacts/benchmarks/hydraulic/

@@ -112,12 +112,14 @@ def _write_report(
     if described_metrics != set(values):
         raise ValueError("METRIC_ROWS must describe every MetricsSnapshot field")
     lines = [
-        "# Offline Evaluation Report",
+        "# Evaluation Report — Track A Controlled Synthetic",
         "",
         "Deterministic baseline agent (no LLM) evaluated on synthetic data generated",
         "within this project. Results describe this synthetic, same-project setting and",
         "do not generalize to production. See",
         "[EVALUATION_METHODOLOGY.md](EVALUATION_METHODOLOGY.md) for the methodology.",
+        "The independent real-sensor Track B report is",
+        "[EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md](EVALUATION_REPORT_EXTERNAL_HYDRAULIC.md).",
         "",
         "## Caveats",
         "",

@@ -291,7 +291,10 @@
 
 身份认证 / 授权、持久化审批审计、终态状态转移、多进程共享状态、冲突 / 幂等、trace 访问 / 脱敏 / 保留、请求限制 / 限流、执行回执 / 补偿、执行级安全评估——这些是真实 CMMS 写操作前的硬阻塞项，v0 不含。
 
-## 当前测试分布
+## 历史阶段-10 测试分布快照（Historical Phase-10 Snapshot）
+
+> 下表是阶段 10（Post-review Security and Contract Hardening）收尾时的测试分布快照，
+> 当时合计 **66 passed**。它**不是**当前分布；当前分布见下方「测试用例演进时间线」。
 
 | 文件 | 用例数 |
 |---|---|
@@ -307,6 +310,18 @@
 | test_streamlit.py | 1 |
 | test_request_id.py | 7 |
 | 合计 | 66 |
+
+## 测试用例演进时间线（Test-count Chronology）
+
+| 里程碑 | 合计 | 相对上一里程碑的增量 |
+|---|---|---|
+| 历史阶段-10 快照 | 66 | —（上表，历史分布） |
+| pre-Track-B | 71 | +5 = API +1（`test_api.py` 7→8）+ UI +4（`test_streamlit.py` 1→5） |
+| 当前（含 Track B） | 114 | +43 = Track B（`test_hydraulic_benchmark.py` 26 + `test_diagnostic_evidence.py` 17） |
+
+> pre-Track-B 的 71 是引入 Track B 之前的测试基线（与 `docs/benchmarks/HYDRAULIC_SYSTEMS_BENCHMARK.md`
+> 的「本轮前 71 passed」一致）；当前 114 为加入 Track B core 与 evidence/integration 测试后的总数。
+> Track A 的 30 场景与原指标保持不变。
 
 ## 尚未实现（历史遗留项，现由路线图承接）
 
